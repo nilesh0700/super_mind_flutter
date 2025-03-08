@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'services/share_service.dart';
 import 'models/shared_content.dart';
 import 'dart:io';
+import 'dart:async';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
 
@@ -34,15 +35,37 @@ class MyHomePage extends StatefulWidget {
   State<MyHomePage> createState() => _MyHomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
   SharedContent? _sharedContent;
   final ShareService _shareService = ShareService();
   bool _isLoading = true;
+  Timer? _contentCheckTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkForSharedContent();
+    
+    // Set up a timer to periodically check for new content
+    _contentCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _checkForNewContent();
+    });
+  }
+  
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _contentCheckTimer?.cancel();
+    super.dispose();
+  }
+  
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App came to foreground, check for new content
+      _checkForNewContent();
+    }
   }
 
   Future<void> _checkForSharedContent() async {
@@ -67,6 +90,29 @@ class _MyHomePageState extends State<MyHomePage> {
       });
     }
   }
+  
+  Future<void> _checkForNewContent() async {
+    try {
+      bool hasNewContent = await _shareService.checkForNewContent();
+      
+      if (hasNewContent) {
+        _checkForSharedContent();
+        
+        // Show a notification or highlight that new content was received
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('New content received!'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Silently handle errors during content checking
+      debugPrint('Error checking for new content: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -74,6 +120,12 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _checkForSharedContent,
+          ),
+        ],
       ),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())

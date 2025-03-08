@@ -18,6 +18,9 @@ class ShareService {
     } on PlatformException catch (e) {
       debugPrint('Error checking for shared content: ${e.message}');
       return false;
+    } catch (e) {
+      debugPrint('Unexpected error checking for shared content: $e');
+      return false;
     }
   }
 
@@ -27,6 +30,9 @@ class ShareService {
       return text;
     } on PlatformException catch (e) {
       debugPrint('Error getting shared text: ${e.message}');
+      return null;
+    } catch (e) {
+      debugPrint('Unexpected error getting shared text: $e');
       return null;
     }
   }
@@ -41,6 +47,35 @@ class ShareService {
     } on PlatformException catch (e) {
       debugPrint('Error getting shared image URIs: ${e.message}');
       return null;
+    } catch (e) {
+      debugPrint('Unexpected error getting shared image URIs: $e');
+      return null;
+    }
+  }
+  
+  Future<bool> checkForNewContent() async {
+    try {
+      final bool hasNewContent = await _channel.invokeMethod('checkForNewContent');
+      return hasNewContent;
+    } on PlatformException catch (e) {
+      debugPrint('Error checking for new content: ${e.message}');
+      return false;
+    } catch (e) {
+      debugPrint('Unexpected error checking for new content: $e');
+      return false;
+    }
+  }
+
+  Future<bool> cancelRedirect() async {
+    try {
+      final bool result = await _channel.invokeMethod('cancelRedirect');
+      return result;
+    } on PlatformException catch (e) {
+      debugPrint('Error canceling redirect: ${e.message}');
+      return false;
+    } catch (e) {
+      debugPrint('Unexpected error canceling redirect: $e');
+      return false;
     }
   }
 } 

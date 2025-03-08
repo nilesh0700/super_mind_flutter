@@ -5,7 +5,6 @@ import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugins.GeneratedPluginRegistrant
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.example.super_mind_flutter/share"
@@ -17,16 +16,27 @@ class MainActivity: FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
-            if (call.method == "getSharedText") {
-                result.success(sharedText)
-                sharedText = null
-            } else if (call.method == "getSharedImageUris") {
-                result.success(sharedImageUris)
-                sharedImageUris = null
-            } else if (call.method == "hasSharedContent") {
-                result.success(sharedText != null || sharedImageUris != null)
-            } else {
-                result.notImplemented()
+            when (call.method) {
+                "getSharedText" -> {
+                    result.success(sharedText)
+                    sharedText = null
+                }
+                "getSharedImageUris" -> {
+                    result.success(sharedImageUris)
+                    sharedImageUris = null
+                }
+                "hasSharedContent" -> {
+                    // Check for new content from QuickShareActivity first
+                    checkForNewSharedContent()
+                    result.success(sharedText != null || sharedImageUris != null)
+                }
+                "checkForNewContent" -> {
+                    val hasNewContent = checkForNewSharedContent()
+                    result.success(hasNewContent)
+                }
+                else -> {
+                    result.notImplemented()
+                }
             }
         }
         
@@ -34,6 +44,9 @@ class MainActivity: FlutterActivity() {
         if (!isSharedContentProcessed) {
             handleIntent(intent)
         }
+        
+        // Check for content from QuickShareActivity
+        checkForNewSharedContent()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,6 +57,12 @@ class MainActivity: FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        // Check for new shared content when the app is resumed
+        checkForNewSharedContent()
     }
 
     private fun handleIntent(intent: Intent) {
@@ -85,5 +104,47 @@ class MainActivity: FlutterActivity() {
                 sharedImageUris?.add(uri.toString())
             }
         }
+    }
+    
+    private fun checkForNewSharedContent(): Boolean {
+        val sharedPrefs = getSharedPreferences("shared_content", MODE_PRIVATE)
+        val hasNewContent = sharedPrefs.getBoolean("has_new_content", false)
+        
+        if (hasNewContent) {
+            // Get the shared text if available
+            val text = sharedPrefs.getString("shared_text", null)
+            if (text != null) {
+                sharedText = text
+            }
+            
+            // Get the shared image URI if available
+            val imageUri = sharedPrefs.getString("shared_image_uri", null)
+            if (imageUri != null) {
+                sharedImageUris = ArrayList()
+                sharedImageUris?.add(imageUri)
+            }
+            
+            // Get multiple image URIs if available
+            val imageUris = sharedPrefs.getString("shared_image_uris", null)
+            if (imageUris != null) {
+                if (sharedImageUris == null) {
+                    sharedImageUris = ArrayList()
+                }
+                val uriList = imageUris.split(",")
+                for (uri in uriList) {
+                    sharedImageUris?.add(uri)
+                }
+            }
+            
+            // Clear the shared preferences
+            val editor = sharedPrefs.edit()
+            editor.clear()
+            editor.apply()
+            
+            isSharedContentProcessed = true
+            return true
+        }
+        
+        return false
     }
 }

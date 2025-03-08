@@ -26,6 +26,7 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            
             <!-- Add intent filter for receiving shared content -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -43,6 +44,46 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
         </activity>
+        
+        <!-- Transparent activity for handling shares without disrupting user flow -->
+        <activity
+            android:name=".QuickShareActivity"
+            android:exported="true"
+            android:theme="@style/TransparentTheme"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:documentLaunchMode="never"
+            android:taskAffinity=".share">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.chooser.chooser_target_service"
+                android:value=".QuickShareTargetService" />
+        </activity>
+        
+        <!-- Service for direct share targets -->
+        <service
+            android:name=".QuickShareTargetService"
+            android:permission="android.permission.BIND_CHOOSER_TARGET_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.chooser.ChooserTargetService" />
+            </intent-filter>
+        </service>
+        
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
