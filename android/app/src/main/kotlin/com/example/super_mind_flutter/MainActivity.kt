@@ -2,149 +2,209 @@ package com.example.super_mind_flutter
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MainActivity: FlutterActivity() {
     private val CHANNEL = "com.example.super_mind_flutter/share"
-    private var sharedText: String? = null
-    private var sharedImageUris: ArrayList<String>? = null
-    private var isSharedContentProcessed = false
+    private val TAG = "MainActivity"
+    private val RETURN_DELAY_MS = 5000L // 5 seconds delay before returning
+    
+    // Shared content variables
+    private var currentSharedText: String? = null
+    private var currentSharedImageUris: ArrayList<String>? = null
+    private var isOpenedFromShare = false
+    
+    // Return handling
+    private var shouldReturnToPreviousApp = false
+    private var returnHandler: Handler? = null
+    private var returnRunnable: Runnable = Runnable {}
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
-                "getSharedText" -> {
-                    result.success(sharedText)
-                    sharedText = null
+                "getInitialSharedContent" -> {
+                    // Return the initial shared content as a JSON object
+                    val contentJson = JSONObject()
+                    contentJson.put("isOpenedFromShare", isOpenedFromShare)
+                    
+                    if (currentSharedText != null) {
+                        contentJson.put("text", currentSharedText)
+                    }
+                    
+                    if (currentSharedImageUris != null && currentSharedImageUris!!.isNotEmpty()) {
+                        val uriArray = JSONArray()
+                        for (uri in currentSharedImageUris!!) {
+                            uriArray.put(uri)
+                        }
+                        contentJson.put("imageUris", uriArray.toString())
+                    }
+                    
+                    Log.d(TAG, "Sending initial shared content to Flutter: $contentJson")
+                    result.success(contentJson.toString())
                 }
-                "getSharedImageUris" -> {
-                    result.success(sharedImageUris)
-                    sharedImageUris = null
+                "cancelReturn" -> {
+                    shouldReturnToPreviousApp = false
+                    returnHandler?.removeCallbacks(returnRunnable)
+                    Log.d(TAG, "Return to previous app cancelled")
+                    result.success(true)
                 }
-                "hasSharedContent" -> {
-                    // Check for new content from QuickShareActivity first
-                    checkForNewSharedContent()
-                    result.success(sharedText != null || sharedImageUris != null)
+                "saveContentSuccess" -> {
+                    // Flutter tells us the content was saved successfully
+                    Log.d(TAG, "Content saved successfully in Flutter")
+                    result.success(true)
                 }
-                "checkForNewContent" -> {
-                    val hasNewContent = checkForNewSharedContent()
-                    result.success(hasNewContent)
+                "saveContentFailure" -> {
+                    // Flutter tells us the content failed to save
+                    Log.d(TAG, "Content failed to save in Flutter")
+                    result.success(true)
                 }
                 else -> {
                     result.notImplemented()
                 }
             }
         }
-        
-        // Process intent if it exists
-        if (!isSharedContentProcessed) {
-            handleIntent(intent)
-        }
-        
-        // Check for content from QuickShareActivity
-        checkForNewSharedContent()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleIntent(intent)
+        Log.d(TAG, "onCreate called")
+        
+        // Process the intent
+        processIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        handleIntent(intent)
+        Log.d(TAG, "onNewIntent called")
+        
+        // Process the new intent
+        processIntent(intent)
     }
     
-    override fun onResume() {
-        super.onResume()
-        // Check for new shared content when the app is resumed
-        checkForNewSharedContent()
-    }
-
-    private fun handleIntent(intent: Intent) {
+    private fun processIntent(intent: Intent) {
         val action = intent.action
         val type = intent.type
 
+        Log.d(TAG, "Processing intent: action=$action, type=$type")
+
+        // Check if this is a share intent
         if (Intent.ACTION_SEND == action && type != null) {
+            isOpenedFromShare = true
+            
             if (type.startsWith("text/")) {
                 handleSendText(intent)
             } else if (type.startsWith("image/")) {
                 handleSendImage(intent)
             }
-            isSharedContentProcessed = true
+            
+            // Schedule return after delay
+            shouldReturnToPreviousApp = true
+            scheduleReturn()
+            
         } else if (Intent.ACTION_SEND_MULTIPLE == action && type != null) {
+            isOpenedFromShare = true
+            
             if (type.startsWith("image/")) {
                 handleSendMultipleImages(intent)
             }
-            isSharedContentProcessed = true
+            
+            // Schedule return after delay
+            shouldReturnToPreviousApp = true
+            scheduleReturn()
+        } else {
+            // Normal app launch, not from share
+            isOpenedFromShare = false
+            shouldReturnToPreviousApp = false
+            
+            // Clear any previous shared content
+            currentSharedText = null
+            currentSharedImageUris = null
         }
     }
 
     private fun handleSendText(intent: Intent) {
         intent.getStringExtra(Intent.EXTRA_TEXT)?.let {
-            sharedText = it
+            currentSharedText = it
+            Log.d(TAG, "Received shared text: ${it.take(50)}...")
+            
+            // Save to persistent storage
+            saveToSharedPreferences()
         }
     }
 
     private fun handleSendImage(intent: Intent) {
         intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)?.let {
-            sharedImageUris = ArrayList()
-            sharedImageUris?.add(it.toString())
+            currentSharedImageUris = ArrayList()
+            currentSharedImageUris?.add(it.toString())
+            Log.d(TAG, "Received shared image: $it")
+            
+            // Save to persistent storage
+            saveToSharedPreferences()
         }
     }
 
     private fun handleSendMultipleImages(intent: Intent) {
         intent.getParcelableArrayListExtra<android.net.Uri>(Intent.EXTRA_STREAM)?.let {
-            sharedImageUris = ArrayList()
+            currentSharedImageUris = ArrayList()
             for (uri in it) {
-                sharedImageUris?.add(uri.toString())
+                currentSharedImageUris?.add(uri.toString())
             }
+            Log.d(TAG, "Received ${it.size} shared images")
+            
+            // Save to persistent storage
+            saveToSharedPreferences()
         }
     }
     
-    private fun checkForNewSharedContent(): Boolean {
+    private fun saveToSharedPreferences() {
         val sharedPrefs = getSharedPreferences("shared_content", MODE_PRIVATE)
-        val hasNewContent = sharedPrefs.getBoolean("has_new_content", false)
+        val editor = sharedPrefs.edit()
         
-        if (hasNewContent) {
-            // Get the shared text if available
-            val text = sharedPrefs.getString("shared_text", null)
-            if (text != null) {
-                sharedText = text
-            }
-            
-            // Get the shared image URI if available
-            val imageUri = sharedPrefs.getString("shared_image_uri", null)
-            if (imageUri != null) {
-                sharedImageUris = ArrayList()
-                sharedImageUris?.add(imageUri)
-            }
-            
-            // Get multiple image URIs if available
-            val imageUris = sharedPrefs.getString("shared_image_uris", null)
-            if (imageUris != null) {
-                if (sharedImageUris == null) {
-                    sharedImageUris = ArrayList()
-                }
-                val uriList = imageUris.split(",")
-                for (uri in uriList) {
-                    sharedImageUris?.add(uri)
-                }
-            }
-            
-            // Clear the shared preferences
-            val editor = sharedPrefs.edit()
-            editor.clear()
-            editor.apply()
-            
-            isSharedContentProcessed = true
-            return true
+        // Clear previous content
+        editor.clear()
+        
+        // Save new content
+        if (currentSharedText != null) {
+            editor.putString("shared_text", currentSharedText)
         }
         
-        return false
+        if (currentSharedImageUris != null && currentSharedImageUris!!.isNotEmpty()) {
+            if (currentSharedImageUris!!.size == 1) {
+                editor.putString("shared_image_uri", currentSharedImageUris!![0])
+            } else {
+                val uriStrings = currentSharedImageUris!!.joinToString(",")
+                editor.putString("shared_image_uris", uriStrings)
+            }
+        }
+        
+        editor.putBoolean("has_new_content", true)
+        editor.apply()
+        
+        Log.d(TAG, "Saved content to SharedPreferences")
+    }
+    
+    private fun scheduleReturn() {
+        Log.d(TAG, "Scheduling return in ${RETURN_DELAY_MS}ms")
+        
+        returnHandler = Handler(Looper.getMainLooper())
+        returnRunnable = Runnable {
+            if (shouldReturnToPreviousApp) {
+                Log.d(TAG, "Auto-finishing activity after delay")
+                finish()
+            } else {
+                Log.d(TAG, "Return cancelled by user interaction")
+            }
+        }
+        
+        returnHandler?.postDelayed(returnRunnable, RETURN_DELAY_MS)
     }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:convert';
+import '../models/shared_content.dart';
 
 class ShareService {
   static const MethodChannel _channel = MethodChannel('com.example.super_mind_flutter/share');
@@ -11,71 +13,93 @@ class ShareService {
 
   ShareService._internal();
 
-  Future<bool> hasSharedContent() async {
+  Future<SharedContentResult> getInitialSharedContent() async {
     try {
-      final bool hasContent = await _channel.invokeMethod('hasSharedContent');
-      return hasContent;
-    } on PlatformException catch (e) {
-      debugPrint('Error checking for shared content: ${e.message}');
-      return false;
-    } catch (e) {
-      debugPrint('Unexpected error checking for shared content: $e');
-      return false;
-    }
-  }
-
-  Future<String?> getSharedText() async {
-    try {
-      final String? text = await _channel.invokeMethod('getSharedText');
-      return text;
-    } on PlatformException catch (e) {
-      debugPrint('Error getting shared text: ${e.message}');
-      return null;
-    } catch (e) {
-      debugPrint('Unexpected error getting shared text: $e');
-      return null;
-    }
-  }
-
-  Future<List<String>?> getSharedImageUris() async {
-    try {
-      final List<dynamic>? uris = await _channel.invokeMethod('getSharedImageUris');
-      if (uris != null) {
-        return uris.map((uri) => uri.toString()).toList();
+      final String jsonResult = await _channel.invokeMethod('getInitialSharedContent');
+      debugPrint('Received initial shared content: $jsonResult');
+      
+      final Map<String, dynamic> data = json.decode(jsonResult);
+      final bool isOpenedFromShare = data['isOpenedFromShare'] ?? false;
+      
+      String? text;
+      List<String>? imageUris;
+      
+      if (data.containsKey('text')) {
+        text = data['text'];
       }
-      return null;
+      
+      if (data.containsKey('imageUris')) {
+        final String urisJson = data['imageUris'];
+        final List<dynamic> urisList = json.decode(urisJson);
+        imageUris = urisList.map((uri) => uri.toString()).toList();
+      }
+      
+      final content = SharedContent(text: text, imageUris: imageUris);
+      return SharedContentResult(
+        isOpenedFromShare: isOpenedFromShare,
+        content: content,
+      );
     } on PlatformException catch (e) {
-      debugPrint('Error getting shared image URIs: ${e.message}');
-      return null;
+      debugPrint('Error getting initial shared content: ${e.message}');
+      return SharedContentResult(
+        isOpenedFromShare: false,
+        content: null,
+      );
     } catch (e) {
-      debugPrint('Unexpected error getting shared image URIs: $e');
-      return null;
+      debugPrint('Unexpected error getting initial shared content: $e');
+      return SharedContentResult(
+        isOpenedFromShare: false,
+        content: null,
+      );
     }
   }
   
-  Future<bool> checkForNewContent() async {
+  Future<bool> cancelReturn() async {
     try {
-      final bool hasNewContent = await _channel.invokeMethod('checkForNewContent');
-      return hasNewContent;
-    } on PlatformException catch (e) {
-      debugPrint('Error checking for new content: ${e.message}');
-      return false;
-    } catch (e) {
-      debugPrint('Unexpected error checking for new content: $e');
-      return false;
-    }
-  }
-
-  Future<bool> cancelRedirect() async {
-    try {
-      final bool result = await _channel.invokeMethod('cancelRedirect');
+      final bool result = await _channel.invokeMethod('cancelReturn');
       return result;
     } on PlatformException catch (e) {
-      debugPrint('Error canceling redirect: ${e.message}');
+      debugPrint('Error canceling return: ${e.message}');
       return false;
     } catch (e) {
-      debugPrint('Unexpected error canceling redirect: $e');
+      debugPrint('Unexpected error canceling return: $e');
       return false;
     }
   }
+  
+  Future<bool> saveContentSuccess() async {
+    try {
+      final bool result = await _channel.invokeMethod('saveContentSuccess');
+      return result;
+    } on PlatformException catch (e) {
+      debugPrint('Error reporting save success: ${e.message}');
+      return false;
+    } catch (e) {
+      debugPrint('Unexpected error reporting save success: $e');
+      return false;
+    }
+  }
+  
+  Future<bool> saveContentFailure() async {
+    try {
+      final bool result = await _channel.invokeMethod('saveContentFailure');
+      return result;
+    } on PlatformException catch (e) {
+      debugPrint('Error reporting save failure: ${e.message}');
+      return false;
+    } catch (e) {
+      debugPrint('Unexpected error reporting save failure: $e');
+      return false;
+    }
+  }
+}
+
+class SharedContentResult {
+  final bool isOpenedFromShare;
+  final SharedContent? content;
+  
+  SharedContentResult({
+    required this.isOpenedFromShare,
+    required this.content,
+  });
 } 
