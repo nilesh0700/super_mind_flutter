@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'services/share_service.dart';
 import 'models/shared_content.dart';
 import 'dart:io';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_linkify/flutter_linkify.dart';
 
 void main() {
   runApp(const MyApp());
@@ -119,9 +121,16 @@ class _MyHomePageState extends State<MyHomePage> {
                 color: Colors.grey.shade200,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(
-                _sharedContent!.text!,
+              child: SelectableLinkify(
+                text: _sharedContent!.text!,
                 style: const TextStyle(fontSize: 16),
+                linkStyle: const TextStyle(
+                  color: Colors.blue,
+                  decoration: TextDecoration.underline,
+                ),
+                onOpen: (link) {
+                  _launchURL(link.url);
+                },
               ),
             ),
             const SizedBox(height: 24),
@@ -163,5 +172,21 @@ class _MyHomePageState extends State<MyHomePage> {
         ],
       ),
     );
+  }
+
+  Future<void> _launchURL(String urlString) async {
+    try {
+      await launch(
+        urlString,
+        forceSafariVC: false,
+        forceWebView: false,
+        enableJavaScript: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open link: $urlString')),
+      );
+    }
   }
 }
